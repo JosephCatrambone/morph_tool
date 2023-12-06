@@ -85,7 +85,9 @@ class Animation:
 		# Then we have to go back and add this point (at the given locations) to every other keyframe.
 		insertion_idx = self.get_nearest_keyframe_at_or_after(frame)
 		if len(self._keyframes) == 0:
-			self._keyframes.append(Keyframe(frame, ))
+			keyframe = Keyframe(frame)
+			keyframe.add_point(left_match, right_match)
+			self._keyframes.append(keyframe)
 		else:
 			# TODO: This won't work when we insert at the start or after the end.
 			# We have to worry about interpolating inside.

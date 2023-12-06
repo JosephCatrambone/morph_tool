@@ -1,7 +1,15 @@
 
 def lerp(a, b, amount: float):
 	delta = b-a
-	return a + (delta*amount)
+	try:
+		return a + (delta*amount)
+	except Exception:
+		print("Fucking what!?")
+		breakpoint()
+
+
+def clamp(value, low, high):
+	return max(low, min(high, value))
 
 """
 def lerp(a, b, coord):

@@ -5,7 +5,7 @@ import numpy
 
 from tps import ThinPlateSpline
 
-from common import lerp
+from common import clamp, lerp
 
 
 def morph(
@@ -33,8 +33,8 @@ def morph(
 		for x in range(0, output_width):
 			left_pixel_pos = morph_to_left.transform(numpy.asarray([[x, y]]))
 			right_pixel_pos = morph_to_right.transform(numpy.asarray([[x, y]]))
-			left_pixel_value = left_image[int(left_pixel_pos[1]), int(left_pixel_pos[0]), :]  # TODO: Bilinear interpolate.
-			right_pixel_value = right_image[int(right_pixel_pos[1]), int(right_pixel_pos[0]), :]
+			left_pixel_value = left_image[clamp(int(left_pixel_pos[0, 1]), 0, left_image.shape[1]-1), clamp(int(left_pixel_pos[0, 0]), 0, left_image.shape[0]-1), :]  # TODO: Bilinear interpolate.
+			right_pixel_value = right_image[clamp(int(right_pixel_pos[0, 1]), 0, right_image.shape[1]-1), clamp(int(right_pixel_pos[0, 0]), 0, right_image.shape[0]-1), :]
 			out_pixel_value = lerp(left_pixel_value, right_pixel_value, pixel_blend)
 			out_image[y, x, :] = out_pixel_value
 	return out_image

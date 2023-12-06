@@ -1,3 +1,4 @@
+import tkinter
 from enum import IntEnum
 from tkinter import *
 from tkinter import filedialog
@@ -58,6 +59,7 @@ class MorphFrame(ttk.Frame):
 		self.canvas.bind('<Button-1>', self.handle_click)
 		self.canvas.bind('<Double-Button-1>', self.handle_double_click)
 		self.canvas.bind('<B1-Motion>', self.handle_drag)
+		self.canvas.bind('<ButtonRelease-1>', self.finish_drag)
 		self.load_button = Button(self, text="Load", command=self.load_image)
 		self.load_button.grid(row=0, column=0)
 		self.canvas_points = list()  # This is used to track all of the 'point objects' in the canvas.
@@ -121,6 +123,12 @@ class MorphFrame(ttk.Frame):
 		self.point_positions[self.selected_point_idx, 0] = x
 		self.point_positions[self.selected_point_idx, 1] = y
 		self.canvas.moveto(self.canvas_points[self.selected_point_idx], x-self.POINT_RADIUS, y-self.POINT_RADIUS)
+
+	def finish_drag(self, event):
+		if self.selected_point_idx is None:
+			return
+		x = self.point_positions[self.selected_point_idx, 0]
+		y = self.point_positions[self.selected_point_idx, 1]
 		evt = PointMovedEvent(self, self.selected_point_idx, x, y)
 		for cb in self.point_moved_callback_listeners:
 			cb(evt)
@@ -129,7 +137,7 @@ class MorphFrame(ttk.Frame):
 		x, y = event.x, event.y
 		# TODO: Only make it if we are far enough away
 		evt = PointAddedEvent(self, len(self.canvas_points), x, y)
-		self._create_point(x, y, add_to_point_positions=True)
+		self._create_point(x, y)
 		for cb in self.point_added_callback_listeners:
 			cb(evt)
 
@@ -138,16 +146,21 @@ class MorphFrame(ttk.Frame):
 		for p in self.canvas_points:
 			self.canvas.delete(p)
 		self.canvas_points.clear()
+		self.point_positions = numpy.zeros((0, 2), dtype=float)
 		for idx in range(0, points.shape[0]):
 			# We could do p.move(delta)...
-			self._create_point(points[idx, 0], points[idx, 1], add_to_point_positions=True)
+			self._create_point(points[idx, 0], points[idx, 1])
 			#self.canvas.moveto(self.canvas_points[idx], self.point_positions[idx, 0], self.point_positions[idx, 1])
-		# self.frame.update_idletasks(); do_expensive_op()
+		#self.frame.update_idletasks(); do_expensive_op()
+		#self.update()
 
-	def _create_point(self, px, py, add_to_point_positions: bool):
+	def _create_point(self, px, py):
 		self.canvas_points.append(self.canvas.create_oval(px-self.POINT_RADIUS, py-self.POINT_RADIUS, px+self.POINT_RADIUS, py+self.POINT_RADIUS, fill='red', outline=""))
-		if add_to_point_positions:
-			self.point_positions = numpy.vstack((self.point_positions, numpy.asarray([[px, py]], dtype=float)))
+		self.point_positions = numpy.vstack((self.point_positions, numpy.asarray([[px, py]], dtype=float)))
+
+	def get_num_points(self):
+		assert self.point_positions.shape[0] == len(self.canvas_points)
+		return len(self.canvas_points)
 
 
 class App:
@@ -164,6 +177,8 @@ class App:
 		frm.grid()
 		frm.pack()
 
+		self.automatically_recompute_morph = tkinter.BooleanVar()
+
 		self.left_frame = MorphFrame(frm)
 		self.left_frame.grid(row=0, column=0)
 		self.right_frame = MorphFrame(frm)
@@ -179,7 +194,9 @@ class App:
 		morph_amount = ttk.Scale(frm, orient=HORIZONTAL, length=200, from_=0.0, to=1.0, command=self.morph_amount_changed)
 		morph_amount.grid(column=0, row=2)
 
-		ttk.Button(frm, text="Quit", command=root.destroy).grid(column=2, row=2)
+		ttk.Button(frm, text="Recompute Morph", command=self.recalculate_morph_output).grid(column=1, row=2)
+		ttk.Checkbutton(frm, text="Automatically Refresh", onvalue=True, offvalue=False, variable=self.automatically_recompute_morph).grid(column=2, row=2)
+		ttk.Button(frm, text="Quit", command=root.destroy).grid(column=3, row=2)
 
 		self.root = root
 		self.frame = frm
@@ -198,35 +215,36 @@ class App:
 
 	def on_left_changes_point(self, evt: PointMovedEvent):
 		self.animation.update_point((evt.point_x, evt.point_y), None, self.animation_frame, evt.point_idx)
-		self.recalculate_morph_output()
+		if self.automatically_recompute_morph:
+			self.recalculate_morph_output()
 
 	def on_right_changes_point(self, evt: PointMovedEvent):
 		self.animation.update_point(None, (evt.point_x, evt.point_y), self.animation_frame, evt.point_idx)
-		self.recalculate_morph_output()
+		if self.automatically_recompute_morph:
+			self.recalculate_morph_output()
 
 	def set_output_image(self, img: Image.Image):
 		self.out_image = img
 		self.out_image_tk = ImageTk.PhotoImage(img)
-		self.out_label['width'] = img.width
-		self.out_label['height'] = img.height
-		self.out_label['image'] = self.out_image_tk
+		self.out_label.configure(width=img.width, height=img.height, image=self.out_image_tk)
 
 	def morph_amount_changed(self, new_value: float):
-		self.morph_amount = new_value
-		self.recalculate_morph_output()
+		self.morph_amount = float(new_value)
+		if self.automatically_recompute_morph:
+			self.recalculate_morph_output()
 
 	def recalculate_morph_output(self):
 		left_image = self.left_frame.image
 		right_image = self.right_frame.image
-		if left_image is None or right_image is None:
+		if left_image is None or right_image is None or self.left_frame.get_num_points() < 3:
 			return
 		# TODO: Make sure we have at least some points.
 		self.frame.update_idletasks()
+		self.frame.update()
 		left_points, right_points, interp_points = self.animation.get_points(self.morph_amount, self.animation_frame)
 		out = morph(left_points, right_points, numpy.asarray(left_image), numpy.asarray(right_image), interp_points, self.morph_amount, left_image.width, left_image.height)
-		out_image = Image.fromarray(out)
+		out_image = Image.fromarray(out.astype(numpy.uint8))
 		self.set_output_image(out_image)
-		self.frame.update()
 
 	def run(self):
 		self.root.mainloop()
