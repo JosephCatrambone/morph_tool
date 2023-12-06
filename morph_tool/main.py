@@ -242,8 +242,7 @@ class App:
 		self.frame.update_idletasks()
 		self.frame.update()
 		left_points, right_points, interp_points = self.animation.get_points(self.morph_amount, self.animation_frame)
-		out = morph(left_points, right_points, numpy.asarray(left_image), numpy.asarray(right_image), interp_points, self.morph_amount, left_image.width, left_image.height)
-		out_image = Image.fromarray(out.astype(numpy.uint8))
+		out_image = morph(left_points, right_points, left_image, right_image, interp_points, self.morph_amount, left_image.width, left_image.height)
 		self.set_output_image(out_image)
 
 	def run(self):

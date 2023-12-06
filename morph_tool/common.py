@@ -1,11 +1,11 @@
 
 def lerp(a, b, amount: float):
 	delta = b-a
-	try:
-		return a + (delta*amount)
-	except Exception:
-		print("Fucking what!?")
-		breakpoint()
+	return a + (delta*amount)
+
+
+def color_lerp(a, b, amount: float):
+	return ((b * b * amount) + (a * a * (1.0 - amount))) ** 0.5
 
 
 def clamp(value, low, high):
