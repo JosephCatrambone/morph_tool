@@ -1,3 +1,4 @@
+import os
 import tkinter
 from enum import IntEnum
 from tkinter import *
@@ -16,6 +17,7 @@ class PointEvent:
 	POINT_ADDED = 1
 	POINT_REMOVED = 2
 	POINTS_REFRESHED = 3
+	POINT_SELECTED = 4
 
 	def __init__(self, sender, idx, x, y):
 		self.sender = sender
@@ -23,6 +25,12 @@ class PointEvent:
 		self.point_idx = idx
 		self.point_x = x
 		self.point_y = y
+
+
+class PointSelectedEvent(PointEvent):
+	def __init__(self, sender, idx, x, y):
+		super().__init__(sender, idx, x, y)
+		self.event_type = PointEvent.POINT_SELECTED
 
 
 class PointAddedEvent(PointEvent):
@@ -56,6 +64,7 @@ class MorphFrame(ttk.Frame):
 		self.image_tk = None
 		self.canvas = Canvas(self, width=512, height=512)
 		self.canvas.grid(row=1, column=0)
+		self.canvas.bind_all('<Key>', self.handle_keyboard)
 		self.canvas.bind('<Button-1>', self.handle_click)
 		self.canvas.bind('<Double-Button-1>', self.handle_double_click)
 		self.canvas.bind('<B1-Motion>', self.handle_drag)
@@ -65,6 +74,7 @@ class MorphFrame(ttk.Frame):
 		self.canvas_points = list()  # This is used to track all of the 'point objects' in the canvas.
 		self.point_positions = numpy.zeros((0, 2), dtype=float)
 
+		self.point_selected_callback_listeners = list()
 		self.point_added_callback_listeners = list()
 		self.point_moved_callback_listeners = list()
 		self.point_deleted_callback_listeners = list()
@@ -76,6 +86,7 @@ class MorphFrame(ttk.Frame):
 		self.image = Image.open(filename)
 		self.image_tk = ImageTk.PhotoImage(self.image)
 		self.canvas.create_image((0, 0), anchor=NW, image=self.image_tk)
+		self.canvas.configure(width=self.image.width, height=self.image.height)
 
 	def _get_nearest_point_idx(self, x, y, max_distance=MAX_CLICK_DISTANCE):
 		min_dist = 1e100
@@ -91,6 +102,16 @@ class MorphFrame(ttk.Frame):
 		if min_dist > max_distance:
 			return None
 		return nearest_idx
+
+	def set_selected_point(self, idx: int, with_callback: bool):
+		self.selected_point_idx = idx
+		for p in self.canvas_points:
+			self.canvas.itemconfig(p, fill="blue")
+		self.canvas.itemconfig(self.canvas_points[self.selected_point_idx], fill="red")
+		if with_callback:
+			evt = PointSelectedEvent(self, idx, None, None)
+			for cb in self.point_selected_callback_listeners:
+				cb(evt)
 
 	def handle_click(self, event):
 		x, y = event.x, event.y
@@ -110,11 +131,8 @@ class MorphFrame(ttk.Frame):
 		root.bind( '<Key>', lambda e: print( 'Key:', e.char, 'Mods:', mods.get( e.state, None )))
 		"""
 		nearest_point_idx = self._get_nearest_point_idx(x, y)
-		for p in self.canvas_points:
-			self.canvas.itemconfig(p, fill="blue")
 		if nearest_point_idx is not None:
-			self.selected_point_idx = nearest_point_idx
-			self.canvas.itemconfig(self.canvas_points[self.selected_point_idx], fill="red")
+			self.set_selected_point(nearest_point_idx, with_callback=True)
 
 	def handle_drag(self, event):
 		if self.selected_point_idx is None:
@@ -125,7 +143,7 @@ class MorphFrame(ttk.Frame):
 		self.canvas.moveto(self.canvas_points[self.selected_point_idx], x-self.POINT_RADIUS, y-self.POINT_RADIUS)
 
 	def finish_drag(self, event):
-		if self.selected_point_idx is None:
+		if self.selected_point_idx is None or self.point_positions.shape[0] == 0:
 			return
 		x = self.point_positions[self.selected_point_idx, 0]
 		y = self.point_positions[self.selected_point_idx, 1]
@@ -140,6 +158,17 @@ class MorphFrame(ttk.Frame):
 		self._create_point(x, y)
 		for cb in self.point_added_callback_listeners:
 			cb(evt)
+
+	def handle_keyboard(self, event):
+		if event.char == 'x':
+			if self.selected_point_idx is None:
+				return
+			self.canvas.delete(self.canvas_points.pop(self.selected_point_idx))
+			self.point_positions = numpy.delete(self.point_positions, self.selected_point_idx, axis=0)
+			evt = PointDeletedEvent(self, self.selected_point_idx, None, None)
+			self.selected_point_idx = None
+			for cb in self.point_deleted_callback_listeners:
+				cb(evt)
 
 	def set_points(self, points: numpy.ndarray):
 		"""Used if we're animating and the frame changes."""
@@ -186,42 +215,66 @@ class App:
 		self.out_label = Label(frm)
 		self.out_label.grid(row=0, column=2)
 
+		self.left_frame.point_selected_callback_listeners.append(self.on_left_selects_point)
 		self.left_frame.point_added_callback_listeners.append(self.on_left_adds_point)
 		self.left_frame.point_moved_callback_listeners.append(self.on_left_changes_point)
+		self.left_frame.point_deleted_callback_listeners.append(self.on_left_deletes_point)
+		self.right_frame.point_selected_callback_listeners.append(self.on_right_selects_point)
 		self.right_frame.point_added_callback_listeners.append(self.on_right_adds_point)
 		self.right_frame.point_moved_callback_listeners.append(self.on_right_changes_point)
+		self.right_frame.point_deleted_callback_listeners.append(self.on_right_deletes_point)
 
 		morph_amount = ttk.Scale(frm, orient=HORIZONTAL, length=200, from_=0.0, to=1.0, command=self.morph_amount_changed)
 		morph_amount.grid(column=0, row=2)
 
 		ttk.Button(frm, text="Recompute Morph", command=self.recalculate_morph_output).grid(column=1, row=2)
 		ttk.Checkbutton(frm, text="Automatically Refresh", onvalue=True, offvalue=False, variable=self.automatically_recompute_morph).grid(column=2, row=2)
-		ttk.Button(frm, text="Quit", command=root.destroy).grid(column=3, row=2)
+
+		self.export_frame_count = ttk.Spinbox(frm, text="Frames", from_=1)
+		self.export_frame_count.grid(column=1, row=4)
+		ttk.Button(frm, text="Export", command=self.export).grid(column=2, row=4)
+		ttk.Button(frm, text="Quit", command=root.destroy).grid(column=3, row=4)
 
 		self.root = root
 		self.frame = frm
 		# self.root.after(100, self._redraw_left)
 		# self.root.update()
 
+	def on_left_selects_point(self, evt: PointSelectedEvent):
+		self.right_frame.set_selected_point(evt.point_idx, with_callback=False)
+
+	def on_right_selects_point(self, evt: PointSelectedEvent):
+		self.left_frame.set_selected_point(evt.point_idx, with_callback=False)
+
 	def on_left_adds_point(self, evt: PointAddedEvent):
-		self.animation.add_point((evt.point_x, evt.point_y), (evt.point_x, evt.point_y), 0)
-		_, right, _ = self.animation.get_points(1.0, 0)
+		self.animation.add_point((evt.point_x, evt.point_y), (evt.point_x, evt.point_y), self.animation_frame)
+		_, right, _ = self.animation.get_points(1.0, self.animation_frame)
 		self.right_frame.set_points(right)
 
 	def on_right_adds_point(self, evt: PointAddedEvent):
-		self.animation.add_point((evt.point_x, evt.point_y), (evt.point_x, evt.point_y), 0)
-		left, _, _ = self.animation.get_points(1.0, 0)
+		self.animation.add_point((evt.point_x, evt.point_y), (evt.point_x, evt.point_y), self.animation_frame)
+		left, _, _ = self.animation.get_points(1.0, self.animation_frame)
 		self.left_frame.set_points(left)
 
 	def on_left_changes_point(self, evt: PointMovedEvent):
 		self.animation.update_point((evt.point_x, evt.point_y), None, self.animation_frame, evt.point_idx)
-		if self.automatically_recompute_morph:
+		if self.automatically_recompute_morph.get():
 			self.recalculate_morph_output()
 
 	def on_right_changes_point(self, evt: PointMovedEvent):
 		self.animation.update_point(None, (evt.point_x, evt.point_y), self.animation_frame, evt.point_idx)
-		if self.automatically_recompute_morph:
+		if self.automatically_recompute_morph.get():
 			self.recalculate_morph_output()
+
+	def on_left_deletes_point(self, evt: PointDeletedEvent):
+		self.animation.remove_point(evt.point_idx)
+		_, right, _ = self.animation.get_points(1.0, self.animation_frame)
+		self.right_frame.set_points(right)
+
+	def on_right_deletes_point(self, evt: PointDeletedEvent):
+		self.animation.remove_point(evt.point_idx)
+		left, _, _ = self.animation.get_points(1.0, self.animation_frame)
+		self.left_frame.set_points(left)
 
 	def set_output_image(self, img: Image.Image):
 		self.out_image = img
@@ -230,10 +283,10 @@ class App:
 
 	def morph_amount_changed(self, new_value: float):
 		self.morph_amount = float(new_value)
-		if self.automatically_recompute_morph:
+		if self.automatically_recompute_morph.get():
 			self.recalculate_morph_output()
 
-	def recalculate_morph_output(self):
+	def recalculate_morph_output(self, morph_amount_override = None, frame_override = None):
 		left_image = self.left_frame.image
 		right_image = self.right_frame.image
 		if left_image is None or right_image is None or self.left_frame.get_num_points() < 3:
@@ -241,9 +294,26 @@ class App:
 		# TODO: Make sure we have at least some points.
 		self.frame.update_idletasks()
 		self.frame.update()
-		left_points, right_points, interp_points = self.animation.get_points(self.morph_amount, self.animation_frame)
-		out_image = morph(left_points, right_points, left_image, right_image, interp_points, self.morph_amount, left_image.width, left_image.height)
+		animation_frame = self.animation_frame
+		morph_amount = self.morph_amount
+		if frame_override is not None:
+			animation_frame = frame_override
+		if morph_amount_override is not None:
+			morph_amount = morph_amount_override
+		left_points, right_points, interp_points = self.animation.get_points(morph_amount, animation_frame)
+		out_image = morph(left_points, right_points, left_image, right_image, interp_points, morph_amount, left_image.width, left_image.height)
 		self.set_output_image(out_image)
+		return out_image
+
+	def export(self):
+		out_dir = filedialog.askdirectory()
+		if not out_dir:
+			return
+		frame_count = int(self.export_frame_count.get())
+		for i in range(frame_count):
+			amount = float(i) / float(frame_count)
+			out_img = self.recalculate_morph_output(morph_amount_override=amount)
+			out_img.save(os.path.join(out_dir, f"{i}.png"))
 
 	def run(self):
 		self.root.mainloop()

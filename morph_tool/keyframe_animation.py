@@ -117,3 +117,7 @@ class Animation:
 		frame_interp = self.get_interpolated_frame(frame)
 		morph_interp = lerp(frame_interp.points_left, frame_interp.points_right, morph_amount)
 		return frame_interp.points_left, frame_interp.points_right, morph_interp
+
+	def remove_point(self, point_idx: int):
+		for f in self._keyframes:
+			f.remove_point(point_idx)
