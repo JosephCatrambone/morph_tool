@@ -8,5 +8,6 @@ edition = "2021"
 [dependencies]
 faer = "~0.15"
 image = "~0.24"
+polars = { version = "~0.35", features = ["lazy", "is_in", "interpolate", "search_sorted"] }
 #nalgebra = { version = "~0.32", features = [] }
 rfd = "~0.12"
