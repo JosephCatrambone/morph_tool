@@ -9,7 +9,7 @@ edition = "2021"
 #faer = "~0.16"
 image = "~0.24"
 #nalgebra = { version = "~0.32", features = [] }
-ndarray = "~0.15"
+ndarray = { version = "~0.15", features = ["approx"] }
 ndarray-linalg = { version = "0.16", features = ["intel-mkl-static"] }
 rand = "~0.8"
 rfd = "~0.12"

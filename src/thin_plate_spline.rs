@@ -4,9 +4,7 @@
 
 use ndarray::prelude::*;
 use ndarray::*;
-use ndarray::linalg::general_mat_mul;
 use ndarray_linalg::{Solve, SVD};
-use ndarray_linalg::{vstack, hstack, aclose};
 
 pub struct ThinPlateSpline {
 	parameters: Array2<f32>,
@@ -61,6 +59,14 @@ impl ThinPlateSpline {
 			control_points: source_mat.into(),
 		}
 	}
+
+	pub fn transform(&self, points: &Vec<f32>) -> Vec<f32> {
+		let pts = vec_to_mat(points, points.len()/2, 2);
+		let phi = compute_radial_distances(&self.control_points, &pts);
+		let augmented = concatenate(Axis(1), &[(&phi).into(), (&Array2::ones((pts.shape()[0], 1))).into(), (&pts).into()]).expect("Shape mismatch in concatenated matrix.");
+		let result = augmented.dot(&self.parameters);
+		result.into_raw_vec()
+	}
 }
 
 fn vec_to_mat(points: &Vec<f32>, num_rows: usize, num_columns: usize) -> Array2<f32> {
@@ -68,34 +74,6 @@ fn vec_to_mat(points: &Vec<f32>, num_rows: usize, num_columns: usize) -> Array2<
 		points[num_columns*i + j]
 	})
 }
-
-/*
-fn hstack(left: &DMatrixView<f32>, right: &DMatrixView<f32>) -> DMatrix<f32> {
-	assert_eq!(left.nrows(), right.nrows());
-	let left_cols = left.ncols();
-	DMatrix::from_fn(left.nrows(), left_cols + right.ncols(), |i, j| {
-		if j < left_cols {
-			left[(i, j)]
-		} else {
-			right[(i, j-left_cols)]
-		}
-	})
-}
-
-fn vstack(top: &DMatrixView<f32>, bottom: &DMatrixView<f32>) -> DMatrix<f32> {
-	// I feel like there's a way to do this with transpose and hstack, but...
-	assert_eq!(top.ncols(), bottom.ncols());
-	let top_rows = top.nrows();
-
-	DMatrix::from_fn(top.nrows() + bottom.nrows(), top.ncols(), |i, j| {
-		if i < top_rows {
-			top[(i, j)]
-		} else {
-			bottom[(i - top_rows, j)]
-		}
-	})
-}
-*/
 
 fn least_squares(a: &Array2<f32>, b: &Array2<f32>) -> Result<Array2<f32>, ndarray_linalg::error::LinalgError> {
 	// [Gilbert Strang appears as a force-ghost projection]
@@ -123,11 +101,30 @@ fn least_squares(a: &Array2<f32>, b: &Array2<f32>) -> Result<Array2<f32>, ndarra
 	// s should have only two elements, but...
 	s.iter_mut().for_each(|value: &mut f32| { *value = if *value < 1e-6f32 { 0.0 } else { 1.0f32 / *value }; } );
 
-	Ok(v.dot(&Array2::from_diag(&s)).dot(&(u.t().slice(s![..2, ..]))).dot(b))
+	// Ax = b -- (Ax) is in R^(p by q) so b is in R^(p by q)
+	// So A and b must have the same number of rows.  x and b must have the same number of columns.
+	// Since we also know A and x multiply, A has the same number of columns as x has rows.
+	let x_rows = a.ncols();
+	let x_cols = b.ncols();
+
+	// Reminder: x = V Sinv Ut b
+	// V_rows must have x_rows.  b_cols must have x_cols.
+	//Ok(v.dot(&Array2::from_diag(&s)).dot(&(u.t().slice(s![..2, ..]))).dot(b))
+	let v_sinv = v.t().slice(s![..x_rows, ..]).dot(&Array2::from_diag(&s));
+	// b is a given, so Ut cols must equal b rows.
+	let v_sinv_ut = v_sinv.dot(&(u.t().slice(s![..v_sinv.ncols(), ..b.nrows()])));
+	Ok(v_sinv_ut.dot(b))
 }
 
 fn compute_radial_distances(control: &Array2<f32>, pts: &Array2<f32>) -> Array2<f32> {
-	todo!()
+	let distances = compute_pairwise_distances(pts, control);
+	distances.mapv(|value| {
+		if value > 1e-5 {
+			(value*value)*value.log10()
+		} else {
+			0.0f32
+		}
+	})
 }
 
 fn compute_pairwise_distances(a: &Array2<f32>, b: &Array2<f32>) -> Array2<f32> {
@@ -179,16 +176,35 @@ mod tests {
 	#[test]
 	fn test_lstsq() {
 		let mut rng = thread_rng();
-		let a = Array2::from_shape_fn((10, 2), |(i, j)| {
+		let a = Array2::from_shape_fn((10, 4), |(i, j)| {
 			rng.gen::<f32>()
 		});
-		let x = Array2::from_shape_fn((2, rng.gen_range(2usize..10)), |(i, j)| {
+		let x = Array2::from_shape_fn((4, rng.gen_range(2usize..5)), |(i, j)| {
 			rng.gen::<f32>()
 		});
 
 		let b = a.dot(&x);
 
 		let x_recovered = least_squares(&a, &b).unwrap();
+		assert!(x.abs_diff_eq(&x_recovered, 1e-5));
+	}
 
+	#[test]
+	fn test_transform_simple() {
+		let src_points = vec![
+			0.0f32, 0.0,
+			8.0, 0.0,
+			0.0, 10.0,
+		];
+		let dst_points = vec![
+			10.0f32, 10.0,
+			18.0, 10.0,
+			10.0, 18.0,
+
+		];
+		let tps = ThinPlateSpline::new(&src_points, &dst_points, 0.1f32);
+
+		let transformed = tps.transform(&vec![0.0, 0.0]);
+		eprintln!("{:?}", &transformed);
 	}
 }
