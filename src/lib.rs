@@ -1,5 +1,6 @@
 mod animation_system;
 mod image_source;
+mod thin_plate_spline;
 
 struct ApplicationState {
 	animation_system: animation_system::Animation,

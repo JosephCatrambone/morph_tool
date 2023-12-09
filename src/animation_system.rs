@@ -1,4 +1,3 @@
-use faer::Mat;
 
 #[derive(Debug, Clone)]
 struct Point(f32, f32);
@@ -43,7 +42,7 @@ pub struct Animation {
 }
 
 impl Animation {
-	fn new() -> Self {
+	pub fn new() -> Self {
 		Animation {
 			channels: vec![]
 		}
@@ -183,5 +182,18 @@ mod tests {
 		pts = anim.get_points(100);
 		assert_eq!(pts.0, vec![1.0, 0.0]);
 		assert_eq!(pts.1, vec![0.0, 0.0]);
+	}
+
+	#[test]
+	fn test_point_removal() {
+		let mut anim = Animation::new();
+		let channel_1 = anim.set_point(0.0, 0.0, 1.0, 1.0, 0, None);
+		let channel_2 = anim.set_point(2.0, 2.0, 3.0, 3.0, 0, None);
+		anim.set_point(4.0, 4.0, 5.0, 5.0, 1, Some(channel_1));
+		anim.set_point(6.0, 6.0, 7.0, 7.0, 2, Some(channel_2));
+		assert_eq!(anim.get_num_channels(), 2);
+		anim.clear_point(None, channel_2);
+		assert_eq!(anim.get_num_channels(), 1);
+
 	}
 }

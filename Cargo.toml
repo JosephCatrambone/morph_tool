@@ -6,7 +6,9 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-faer = "~0.15"
+faer = "~0.16"
 image = "~0.24"
 #nalgebra = { version = "~0.32", features = [] }
+#ndarray = "~0.15"
+#ndarray-linalg = { version = "0.16", features = ["openblas-static"] }
 rfd = "~0.12"
