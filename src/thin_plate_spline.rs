@@ -104,13 +104,10 @@ fn least_squares(a: &Array2<f32>, b: &Array2<f32>) -> Result<Array2<f32>, ndarra
 	// Ax = b -- (Ax) is in R^(p by q) so b is in R^(p by q)
 	// So A and b must have the same number of rows.  x and b must have the same number of columns.
 	// Since we also know A and x multiply, A has the same number of columns as x has rows.
-	let x_rows = a.ncols();
-	let x_cols = b.ncols();
-
 	// Reminder: x = V Sinv Ut b
 	// V_rows must have x_rows.  b_cols must have x_cols.
 	//Ok(v.dot(&Array2::from_diag(&s)).dot(&(u.t().slice(s![..2, ..]))).dot(b))
-	let v_sinv = v.t().slice(s![..x_rows, ..]).dot(&Array2::from_diag(&s));
+	let v_sinv = v.t().slice(s![..a.ncols(), ..]).dot(&Array2::from_diag(&s));
 	// b is a given, so Ut cols must equal b rows.
 	let v_sinv_ut = v_sinv.dot(&(u.t().slice(s![..v_sinv.ncols(), ..b.nrows()])));
 	Ok(v_sinv_ut.dot(b))
@@ -142,7 +139,7 @@ fn compute_pairwise_distances(a: &Array2<f32>, b: &Array2<f32>) -> Array2<f32> {
 
 #[cfg(test)]
 mod tests {
-	use ndarray_linalg::assert_aclose;
+	use ndarray_linalg::{assert_aclose, assert_close_l1};
 	use super::*;
 	use rand::prelude::*;
 
@@ -204,7 +201,22 @@ mod tests {
 		];
 		let tps = ThinPlateSpline::new(&src_points, &dst_points, 0.1f32);
 
-		let transformed = tps.transform(&vec![0.0, 0.0]);
-		eprintln!("{:?}", &transformed);
+		let transformed = tps.transform(&vec![
+			0.0, 0.0,
+			4.0, 0.0,
+			8.0, 0.0,
+			0.0, 5.0,
+			0.0, 10.0,
+			4.0, 5.0,
+		]);
+		let expected = vec![
+			10.0, 10.0, // Exact src to dest so should get the universal offset of (10, 10)
+			14.0, 10.0, // Half way between src and dest.  4 is half way between 0 and 8 + 10 offset.
+			18.0, 10.0, // Exact src/dst match.
+			10.0, 14.0, // Half way on y axis between the 0 src and 10 dst.
+			10.0, 18.0, // Exact src/dst match.
+			14.0, 14.0, // Half way on each axis plus offset.
+		];
+		assert_close_l1!(&vec_to_mat(&transformed, 6, 2), &vec_to_mat(&expected, 6, 2), 1e-3);
 	}
 }
