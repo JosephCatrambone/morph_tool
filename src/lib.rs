@@ -1,17 +1,6 @@
-mod animation_system;
-mod image_source;
-mod thin_plate_spline;
-
-struct ApplicationState {
-	animation_system: animation_system::Animation,
-	current_frame: u32,
-
-}
-
-
-pub fn add(left: usize, right: usize) -> usize {
-	left + right
-}
+pub mod animation_system;
+pub mod image_source;
+pub mod thin_plate_spline;
 
 #[cfg(test)]
 mod tests {
@@ -19,7 +8,5 @@ mod tests {
 
 	#[test]
 	fn it_works() {
-		let result = add(2, 2);
-		assert_eq!(result, 4);
 	}
 }
