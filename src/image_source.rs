@@ -6,12 +6,30 @@ pub trait FrameProvider {
 	fn get_frame(&mut self, frame_num: u32) -> &DynamicImage;
 }
 
-struct StaticImageProvider {
+pub struct NullImageProvider {
+	img: DynamicImage
+}
+
+impl NullImageProvider {
+	pub fn new() -> Self {
+		Self {
+			img: image::load_from_memory(include_bytes!(concat!("../", "resources", "/", "picture_icon.png"))).unwrap(),
+		}
+	}
+}
+
+impl FrameProvider for NullImageProvider {
+	fn get_frame(&mut self, _frame_num: u32) -> &DynamicImage {
+		&self.img
+	}
+}
+
+pub struct StaticImageProvider {
 	img: DynamicImage,
 }
 
 impl StaticImageProvider {
-	fn new_from_file<P: AsRef<Path>>(filename: P) -> Result<Self> {
+	pub fn new_from_file<P: AsRef<Path>>(filename: P) -> Result<Self> {
 		let img = image::open(filename.as_ref())?;
 		Ok(Self {
 			img

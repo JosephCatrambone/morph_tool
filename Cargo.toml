@@ -6,17 +6,21 @@ edition = "2021"
 [lib]
 name = "morph_tool"
 
-[features]
-egui_frontend = ["egui", "eframe", "epaint"]
-
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 [[bin]]
 name = "main"
 path = "src/bin/main.rs"
 
-
 [dependencies]
 anyhow = "~1.0"
+egui = { version = "~0.24" }
+eframe = { version = "~0.24", default-features = false, features = [
+    "accesskit",     # Make egui comptaible with screen readers. NOTE: adds a lot of dependencies.
+    "default_fonts", # Embed the default egui fonts.
+    "glow",          # Use the glow rendering backend. Alternative: "wgpu".
+    "persistence",   # Enable restoring app state when restarting the app.
+] }
+epaint = { version = "~0.24" }
 env_logger = "0.10.1"
 #faer = "~0.16"
 image = "~0.24"
@@ -27,16 +31,6 @@ rand = "~0.8"
 rfd = "~0.12"
 serde = { version = "1", features = ["derive"] }
 #video-rs = { version = "~0.5", features = ["ndarray"] }
-
-# For UI:
-egui = { version = "~0.24", optional = true }
-eframe = { version = "~0.24", optional = true, default-features = false, features = [
-    "accesskit",     # Make egui comptaible with screen readers. NOTE: adds a lot of dependencies.
-    "default_fonts", # Embed the default egui fonts.
-    "glow",          # Use the glow rendering backend. Alternative: "wgpu".
-    "persistence",   # Enable restoring app state when restarting the app.
-] }
-epaint = { version = "~0.24", optional = true }
 
 # Optimizations:
 [profile.release]
