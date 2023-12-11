@@ -1,5 +1,8 @@
 use crate::animation_system::Animation;
 use crate::image_source::FrameProvider;
+use eframe;
+use egui;
+use egui_dock::{DockArea, DockState, NodeIndex, Style, TabViewer};
 
 pub mod animation_system;
 pub mod image_source;
@@ -21,7 +24,38 @@ pub struct MorphApp {
 	
 	#[serde(skip)]
 	value: f32,
+	
+	#[serde(skip)]
+	tools: DockState<ToolPane>,
 }
+
+enum ToolPane {
+	SourcePointEditor,
+	DestinationPointEditor,
+	TimelineEditor,
+	OutputViewer,
+}
+
+struct ToolRenderer;
+
+impl TabViewer for ToolRenderer {
+	type Tab = ToolPane;
+	
+    fn title(&mut self, tab: &mut Self::Tab) -> egui::WidgetText {
+		match tab {
+			ToolPane::SourcePointEditor => "Source Point Editor",
+			ToolPane::DestinationPointEditor => "Destination Point Editor",
+			ToolPane::TimelineEditor => "Timeline Editor",
+			ToolPane::OutputViewer => "Output Viewer",
+		}.into()
+    }
+
+    // Defines the contents of a given `tab`.
+    fn ui(&mut self, ui: &mut egui::Ui, tool_pane: &mut Self::Tab) {
+        ui.label(format!("Content of tool pane!"));
+    }
+}
+
 
 impl Default for MorphApp {
 	fn default() -> Self {
@@ -29,6 +63,7 @@ impl Default for MorphApp {
 			animation: Animation::new(),
 			left: Box::new(image_source::NullImageProvider::new()),
 			right: Box::new(image_source::NullImageProvider::new()),
+			tools: DockState::new(vec![ToolPane::SourcePointEditor, ToolPane::DestinationPointEditor, ToolPane::OutputViewer, ToolPane::TimelineEditor]),
 			// Example stuff:
 			label: "Hello World!".to_owned(),
 			value: 2.7,
@@ -65,65 +100,30 @@ impl eframe::App for MorphApp {
 		
 		egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
 			// The top panel is often a good place for a menu bar:
-			
 			egui::menu::bar(ui, |ui| {
-				// NOTE: no File->Quit on web pages!
-				let is_web = cfg!(target_arch = "wasm32");
-				if !is_web {
-					ui.menu_button("File", |ui| {
-						if ui.button("Quit").clicked() {
-							ctx.send_viewport_cmd(egui::ViewportCommand::Close);
-						}
-					});
-					ui.add_space(16.0);
-				}
+				//let is_web = cfg!(target_arch = "wasm32");
+				ui.menu_button("File", |ui| {
+					if ui.button("Quit").clicked() {
+						ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+					}
+				});
+				ui.add_space(16.0);
 				
 				egui::widgets::global_dark_light_mode_buttons(ui);
 			});
 		});
 		
 		egui::CentralPanel::default().show(ctx, |ui| {
-			// The central panel the region left after adding TopPanel's and SidePanel's
-			ui.heading("eframe template");
-			
-			ui.horizontal(|ui| {
-				ui.label("Write something: ");
-				ui.text_edit_singleline(&mut self.label);
-			});
-			
-			ui.add(egui::Slider::new(&mut self.value, 0.0..=10.0).text("value"));
-			if ui.button("Increment").clicked() {
-				self.value += 1.0;
-			}
-			
-			ui.separator();
-			
-			ui.add(egui::github_link_file!(
-                "https://github.com/emilk/eframe_template/blob/master/",
-                "Source code."
-            ));
-			
+			DockArea::new(&mut self.tools)
+				.style(Style::from_egui(ui.style().as_ref()))
+				.show_inside(ui, &mut ToolRenderer);
 			ui.with_layout(egui::Layout::bottom_up(egui::Align::LEFT), |ui| {
-				powered_by_egui_and_eframe(ui);
 				egui::warn_if_debug_build(ui);
 			});
 		});
 	}
 }
 
-fn powered_by_egui_and_eframe(ui: &mut egui::Ui) {
-	ui.horizontal(|ui| {
-		ui.spacing_mut().item_spacing.x = 0.0;
-		ui.label("Powered by ");
-		ui.hyperlink_to("egui", "https://github.com/emilk/egui");
-		ui.label(" and ");
-		ui.hyperlink_to(
-			"eframe",
-			"https://github.com/emilk/egui/tree/master/crates/eframe",
-		);
-		ui.label(".");
-	});
-}
 
 #[cfg(test)]
 mod tests {
