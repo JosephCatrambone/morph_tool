@@ -2,6 +2,8 @@ use anyhow::Result;
 use std::path::Path;
 use image::DynamicImage;
 
+const MISSING_ASSET_BYTES: &[u8] = include_bytes!("../resources/missing_asset.png");
+
 pub trait FrameProvider {
 	fn get_frame(&mut self, frame_num: u32) -> &DynamicImage;
 }
@@ -13,7 +15,7 @@ pub struct NullImageProvider {
 impl NullImageProvider {
 	pub fn new() -> Self {
 		Self {
-			img: image::load_from_memory(include_bytes!(concat!("../", "resources", "/", "picture_icon.png"))).unwrap(),
+			img: image::load_from_memory(MISSING_ASSET_BYTES).unwrap(),
 		}
 	}
 }

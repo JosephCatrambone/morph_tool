@@ -8,20 +8,21 @@ name = "morph_tool"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 [[bin]]
-name = "main"
-path = "src/main.rs"
+name = "egui_frontend"
+path = "src/egui_frontend/main.rs"
+required-features = ["egui_frontend",]
+
+[[bin]]
+name = "minifb_frontend"
+path = "src/minifb_frontend/main.rs"
+required-features = ["minifb_frontend"]
+
+[features]
+egui_frontend = ["egui", "egui_tiles", "eframe", "epaint"]
+minifb_frontend = ["minifb", ]
 
 [dependencies]
 anyhow = "~1.0"
-egui = { version = "~0.24" }
-egui_dock = "~0.9"
-eframe = { version = "~0.24", default-features = false, features = [
-    "accesskit",     # Make egui comptaible with screen readers. NOTE: adds a lot of dependencies.
-    "default_fonts", # Embed the default egui fonts.
-    "glow",          # Use the glow rendering backend. Alternative: "wgpu".
-    "persistence",   # Enable restoring app state when restarting the app.
-] }
-epaint = { version = "~0.24" }
 env_logger = "0.10.1"
 #faer = "~0.16"
 image = "~0.24"
@@ -32,6 +33,20 @@ rand = "~0.8"
 rfd = "~0.12"
 serde = { version = "1", features = ["derive"] }
 #video-rs = { version = "~0.5", features = ["ndarray"] }
+
+# Egui:
+egui = { version = "~0.24", optional = true }
+egui_tiles = { version = "~0.4", optional = true }
+eframe = { version = "~0.24", optional = true, default-features = false, features = [
+    "accesskit",     # Make egui comptaible with screen readers. NOTE: adds a lot of dependencies.
+    "default_fonts", # Embed the default egui fonts.
+    "glow",          # Use the glow rendering backend. Alternative: "wgpu".
+    "persistence",   # Enable restoring app state when restarting the app.
+] }
+epaint = { version = "~0.24", optional = true }
+
+# Minifb:
+minifb = { version = "~0.25", optional = true }
 
 # Optimizations:
 [profile.release]
