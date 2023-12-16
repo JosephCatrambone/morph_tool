@@ -17,9 +17,15 @@ name = "minifb_frontend"
 path = "src/minifb_frontend/main.rs"
 required-features = ["minifb_frontend"]
 
+[[bin]]
+name = "fltk_frontend"
+path = "src/fltk_frontend/main.rs"
+required-features = ["fltk_frontend"]
+
 [features]
-egui_frontend = ["egui", "egui_tiles", "eframe", "epaint"]
+egui_frontend = ["egui", "egui_tiles", "eframe", "epaint", "egui_extras"]
 minifb_frontend = ["minifb", ]
+fltk_frontend = ["fltk", ]
 
 [dependencies]
 anyhow = "~1.0"
@@ -36,6 +42,7 @@ serde = { version = "1", features = ["derive"] }
 
 # Egui:
 egui = { version = "~0.24", optional = true }
+egui_extras = { version = "*", optional = true, features = ["all_loaders"] }
 egui_tiles = { version = "~0.4", optional = true }
 eframe = { version = "~0.24", optional = true, default-features = false, features = [
     "accesskit",     # Make egui comptaible with screen readers. NOTE: adds a lot of dependencies.
@@ -47,6 +54,9 @@ epaint = { version = "~0.24", optional = true }
 
 # Minifb:
 minifb = { version = "~0.25", optional = true }
+
+# FLTK:
+fltk = { version = "~1.4", optional = true, features = ["fltk-bundled",] }
 
 # Optimizations:
 [profile.release]

@@ -1,15 +1,16 @@
 #![warn(clippy::all, rust_2018_idioms)]
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")] // hide console window on Windows in release
 
-use egui::{Ui, WidgetText};
-use egui_tiles::{TileId, UiResponse};
+use egui::{Pos2, Vec2, Rect, Ui, WidgetText};
+use egui_extras;
 use image::DynamicImage;
 use eframe;
 use egui;
 use env_logger;
+use epaint::TextureId;
 use morph_tool::*;
 use morph_tool::animation_system::Animation;
-use morph_tool::image_source::FrameProvider;
+use morph_tool::image_source::{FrameProvider, open_image_source};
 
 fn main() -> eframe::Result<()> {
 	env_logger::init(); // Log to stderr (if you run with `RUST_LOG=debug`).
@@ -39,38 +40,16 @@ struct MorphApp {
 	right: Box<dyn FrameProvider>,
 
 	#[serde(skip)]
+	cached_frame_left: Option<egui::Image>,
+	#[serde(skip)]
 	cached_points_left: Vec<f32>,
+	#[serde(skip)]
+	cached_frame_right: Option<TextureId>,
 	#[serde(skip)]
 	cached_points_right: Vec<f32>,
 
 	label: String,
 	current_frame: u32,
-}
-
-struct TabViewer;
-
-struct TabData {
-	pane_title: String,
-	frame_number: u32,
-	point_data: Vec<f32>,
-	image_data: DynamicImage,
-}
-
-impl egui_tiles::Behavior<TabData> for TabViewer {
-	fn pane_ui(&mut self, ui: &mut Ui, _tile_id: TileId, pane: &mut TabData) -> UiResponse {
-		if ui
-			.add(egui::Button::new(&pane.pane_title).sense(egui::Sense::drag()))
-			.drag_started()
-		{
-			egui_tiles::UiResponse::DragStarted
-		} else {
-			egui_tiles::UiResponse::None
-		}
-	}
-
-	fn tab_title_for_pane(&mut self, pane: &TabData) -> WidgetText {
-		pane.pane_title.clone().into()
-	}
 }
 
 impl Default for MorphApp {
@@ -82,6 +61,8 @@ impl Default for MorphApp {
 
 			cached_points_left: vec![],
 			cached_points_right: vec![],
+			cached_frame_left: None,
+			cached_frame_right: None,
 
 			label: "Hello World!".to_owned(),
 			current_frame: 0u32,
@@ -94,6 +75,8 @@ impl MorphApp {
 	pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
 		// This is also where you can customize the look and feel of egui using
 		// `cc.egui_ctx.set_visuals` and `cc.egui_ctx.set_fonts`.
+
+		egui_extras::install_image_loaders(&cc.egui_ctx);
 
 		// Load previous app state (if any).
 		// Note that you must enable the `persistence` feature for this to work.
@@ -121,6 +104,12 @@ impl eframe::App for MorphApp {
 			egui::menu::bar(ui, |ui| {
 				//let is_web = cfg!(target_arch = "wasm32");
 				ui.menu_button("File", |ui| {
+					if ui.buttom("Load Left Image").clicked() {
+						if let Some(img_source) = open_image_source() {
+							self.left = img_source;
+							let img = self.left.get_frame(0);
+						}
+					}
 					if ui.button("Quit").clicked() {
 						ctx.send_viewport_cmd(egui::ViewportCommand::Close);
 					}
@@ -141,5 +130,43 @@ impl eframe::App for MorphApp {
 
 		});
 	}
+}
+
+fn point_panel(ctx: &egui::Context, ui: &mut Ui, img_id: TextureId, img: &DynamicImage, pts: &mut Vec<f32>, camera_offset_x: &mut f32, camera_offset_y: &mut f32, camera_zoom: &mut f32) -> egui::Response {
+	let (mut response, painter) = ui.allocate_painter(ui.available_size_before_wrap(), egui::Sense::drag());
+
+	let to_screen = egui::emath::RectTransform::from_to(
+		Rect::from_min_size(Pos2::ZERO, response.rect.square_proportions()),
+		response.rect,
+	);
+	let from_screen = to_screen.inverse();
+
+	// Draw image with zoom and offset.
+	let img_rect = Rect::from_center_size(Pos2::new(*camera_offset_x, *camera_offset_y), Vec2::new(img.width()*camera_zoom, img.height()*camera_zoom));
+	egui::Image::new(img_id).paint_at(ui, img_rect);
+
+	if let Some(pointer_pos) = response.interact_pointer_pos() {
+		let canvas_pos = from_screen * pointer_pos;
+		if current_line.last() != Some(&canvas_pos) {
+			current_line.push(canvas_pos);
+			response.mark_changed();
+		}
+	} else if !current_line.is_empty() {
+		self.lines.push(vec![]);
+		response.mark_changed();
+	}
+
+	let shapes = self
+		.lines
+		.iter()
+		.filter(|line| line.len() >= 2)
+		.map(|line| {
+			let points: Vec<Pos2> = line.iter().map(|p| to_screen * *p).collect();
+			egui::Shape::line(points, self.stroke)
+		});
+
+	painter.extend(shapes);
+
+	response
 }
 

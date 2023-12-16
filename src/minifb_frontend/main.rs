@@ -87,7 +87,10 @@ trait Widget {
 // Displays a bunch of (f32, f32) points on top of an image.
 struct PointPlotter {
 	frame_provider: Arc<Mutex<Box<dyn FrameProvider>>>,
+	cached_image: Vec<u32>,
 	cached_points: Vec<f32>,
+	dirty: bool,
+	// Need a flag for dirty?  We should have the size of the output rect just in case the cached image changes.
 
 	mouse_down: Option<(f32, f32)>,
 
@@ -103,14 +106,45 @@ impl Widget for PointPlotter {
 	fn draw(&self, framebuffer: &mut Vec<u32>, buffer_size: (usize, usize), output_rect: (usize, usize, usize, usize)) {
 		// We have a rectangle given as (left, top, right, bottom)
 		// We could draw outside of that, but...
-		// Start by drawing our image, or at least the parts inside our display rect.
+
+		// First, draw the cached image.  If the size is different, we can draw just what we have.
+		let (left, top, right, bottom) = output_rect;
+		let width = right-left;
+		let height = bottom-top;
+
+		if width*height != self.cached_image.len() {
+			// Need redraw.
+			return;
+		}
+
+		for buffer_y in top..bottom {
+			for buffer_x in left..right {
+				let image_x = buffer_x - left;
+				let image_y = buffer_y - top;
+				if image_x < buffer_size.0 && image_y < buffer_size.1 {
+					framebuffer[buffer_x + buffer_y*buffer_size.0] = self.cached_image[image_x + image_y*width];
+				}
+			}
+		}
 	}
 
 	fn update(&mut self, window: &mut Window) {
 		if let Some((mouse_x, mouse_y)) = window.get_mouse_pos(MouseMode::Pass) {
 			// Drag:
 			if window.get_mouse_down(MouseButton::Middle) {
-				
+				if let Some((prev_x, prev_y)) = self.mouse_down {
+					let dx = mouse_x - prev_x;
+					let dy = mouse_y - prev_y;
+					// We have to set prev because we're accumulating the camera offset and adding it.
+					self.mouse_down.replace((mouse_x, mouse_y));
+					self.camera_offset = (self.camera_offset.0 + dx, self.camera_offset.1 + dy);
+				} else {
+					// Start drag.
+					self.mouse_down = Some((mouse_x, mouse_y));
+				}
+			} else {
+				// Clear middle drag.
+				self.mouse_down = None;
 			}
 		}
 	}
