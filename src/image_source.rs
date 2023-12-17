@@ -65,8 +65,9 @@ impl FrameProvider for StaticImageProvider {
 pub fn open_image_source() -> Option<Box<dyn FrameProvider>> {
 	if let Some(fp) = rfd::FileDialog::new().pick_file() {
 		// For now, we only support static file paths.
-		todo!()
-	} else {
-		None
+		if let Ok(src) = StaticImageProvider::new_from_file(fp) {
+			return Some(Box::new(src));
+		}
 	}
+	None
 }
