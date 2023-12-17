@@ -40,7 +40,7 @@ struct PointEditor {
 	needs_frame_update: bool,
 	// Data:
 	image_source: Arc<Mutex<dyn FrameProvider>>,
-	keypoints: Arc<Mutex<Vec<f32>>>,
+	cached_keypoints: Arc<Mutex<Vec<f32>>>,
 }
 
 impl PointEditor {

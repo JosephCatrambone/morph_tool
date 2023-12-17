@@ -1,8 +1,6 @@
 use anyhow::Result;
 use std::path::Path;
-use image::DynamicImage;
-
-const MISSING_ASSET_BYTES: &[u8] = include_bytes!("../resources/missing_asset.png");
+use image::{DynamicImage, GenericImage};
 
 pub trait FrameProvider {
 	fn get_frame(&mut self, frame_num: u32) -> &DynamicImage;
@@ -13,9 +11,28 @@ pub struct NullImageProvider {
 }
 
 impl NullImageProvider {
-	pub fn new() -> Self {
+	pub fn new(size: Option<(u32, u32)>) -> Self {
+		let (width, height) = size.unwrap_or((64, 64));
+		let mut img = DynamicImage::new_rgba8(width, height);
+		let block_size = 16;
+		let y_blocks = height / block_size;
+		let x_blocks = width / block_size;
+		for y in 0..y_blocks {
+			for x in 0..x_blocks {
+				let fill = if (x+y) % 2 == 0 {
+					[255, 0, 255, 255]
+				} else {
+					[255, 0, 255, 0]
+				};
+				for i in 0..block_size {
+					for j in 0..block_size {
+						img.put_pixel((x*block_size)+j, (y*block_size)+i, image::Rgba(fill));
+					}
+				}
+			}
+		}
 		Self {
-			img: image::load_from_memory(MISSING_ASSET_BYTES).unwrap(),
+			img,
 		}
 	}
 }
