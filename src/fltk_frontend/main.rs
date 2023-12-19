@@ -18,6 +18,7 @@ use std::rc::Rc;
 use std::cell::RefCell;
 use std::ops::DerefMut;
 use std::sync::{Mutex, Arc};
+use fltk::enums::Event;
 use ndarray::AssignElem;
 use morph_tool::animation_system::Animation;
 use morph_tool::image_source::*;
@@ -38,13 +39,21 @@ Since our output image and points are cached by the draw function we don't need 
 
 const MENUBAR_HEIGHT: i32 = 24;
 
+type PointCallback = dyn Fn(usize, f32, f32) -> ();
+
+fn point_noop(idx: usize, x: f32, y: f32) -> () {}
+
 struct PointEditor {
-	// UI:
-	frame: Frame,
 	cached_image: Arc<Mutex<imagefl::RgbImage>>,
-	// Data:
-	image_source: Arc<Mutex<Box<dyn FrameProvider>>>,
 	cached_keypoints: Arc<Mutex<Vec<f32>>>,
+	selected_point: Option<usize>,
+	// Shared:
+	pub image_source: Arc<Mutex<Box<dyn FrameProvider>>>,
+	// Callbacks:
+	pub point_selected_cb: &'static PointCallback,
+	pub point_added_cb: &'static PointCallback,
+	pub point_moved_cb: &'static PointCallback,
+	pub point_deleted_cb: &'static PointCallback,
 }
 
 impl PointEditor {
@@ -82,11 +91,31 @@ impl PointEditor {
 			}
 		});
 
+		frame.handle({
+			let mut prev_mouse_x = 0;
+			let mut prev_mouse_y = 0;
+			|f, evt| {
+				match evt {
+					Event::Push => {
+						println!("Mouse touch at {:?}", app::get_mouse());
+						true
+					},
+					Event::Drag => { true },
+					_ => false // Event unhandled
+				}
+			}
+		});
+
 		Self {
-			frame,
 			cached_image,
 			image_source,
+			selected_point: None,
 			cached_keypoints: keypoints,
+			// Start with noops.
+			point_added_cb: &point_noop,
+			point_moved_cb: &point_noop,
+			point_selected_cb: &point_noop,
+			point_deleted_cb: &point_noop,
 		}
 	}
 
@@ -99,9 +128,16 @@ impl PointEditor {
 		let mut img = self.cached_image.lock().unwrap();
 		*img = rs_image_to_fl_image(self.image_source.lock().unwrap().get_frame(0)).unwrap();
 	}
+
+	fn set_points(&mut self, new_points: &Vec<f32>) {
+		let mut pts = self.cached_keypoints.lock().unwrap();
+		pts.clear();
+		pts.extend_from_slice(new_points.as_slice());
+	}
 }
 
 fn main() {
+	let mut animation = Arc::new(Mutex::new(Animation::new()));
 	let app = app::App::default();
 	let mut wind = Window::new(100, 100, 400, 300, "Hello from rust");
 	let mut frame = Frame::default_fill();
@@ -131,6 +167,19 @@ fn main() {
 		menubar.add("Morph/Open Right Frame\t", Shortcut::None, menu::MenuFlag::Normal, move |m| {
 			right.borrow_mut().load_frame_source();
 		});
+	}
+	{
+		let mut animation = animation.clone();
+		let mut left = left.clone();
+		let mut right = right.clone();
+		left.borrow_mut().point_added_cb = &|idx, x, y| {
+			// Add it to the animation and then do a callback to the right side.
+			animation.lock().unwrap().set_point(x, y, x, y, 0, None);
+			if let Ok(mut right_pts) = right.borrow_mut().cached_keypoints.get_mut() {
+				right_pts.push(x);
+				right_pts.push(y);
+			}
+		};
 	}
 
 	// Finalize layout and show:
