@@ -39,9 +39,13 @@ Since our output image and points are cached by the draw function we don't need 
 
 const MENUBAR_HEIGHT: i32 = 24;
 
-type PointCallback = dyn Fn(usize, f32, f32) -> ();
-
-fn point_noop(idx: usize, x: f32, y: f32) -> () {}
+#[derive(Clone, Copy, Debug)]
+enum PointEvent {
+	PointSelected(usize),
+	PointAdded(f32, f32),
+	PointMoved(usize, f32, f32),
+	PointDeleted(usize),
+}
 
 struct PointEditor {
 	cached_image: Arc<Mutex<imagefl::RgbImage>>,
@@ -50,10 +54,7 @@ struct PointEditor {
 	// Shared:
 	pub image_source: Arc<Mutex<Box<dyn FrameProvider>>>,
 	// Callbacks:
-	pub point_selected_cb: &'static PointCallback,
-	pub point_added_cb: &'static PointCallback,
-	pub point_moved_cb: &'static PointCallback,
-	pub point_deleted_cb: &'static PointCallback,
+	pub event_listeners: Arc<Mutex<Vec<Box<dyn Fn(PointEvent) -> ()>>>>,
 }
 
 impl PointEditor {
@@ -62,6 +63,7 @@ impl PointEditor {
 		let image_source: Arc<Mutex<Box<dyn FrameProvider>>> = Arc::new(Mutex::new(Box::new(raw_provider)));
 		let cached_image = Arc::new(Mutex::new(rs_image_to_fl_image(image_source.lock().unwrap().get_frame(0)).unwrap()));
 		let keypoints = Arc::new(Mutex::new(vec![]));
+		let callbacks = Arc::new(Mutex::new(vec![]));
 		let mut frame = Frame::default().size_of_parent();
 		frame.set_color(Color::Black);
 		//frame.set_frame()
@@ -92,12 +94,17 @@ impl PointEditor {
 		});
 
 		frame.handle({
+			let mut listeners = callbacks.clone();
 			let mut prev_mouse_x = 0;
 			let mut prev_mouse_y = 0;
-			|f, evt| {
+			move |f, evt| {
 				match evt {
 					Event::Push => {
+						let (mouse_x, mouse_y) = app::get_mouse();
 						println!("Mouse touch at {:?}", app::get_mouse());
+						let evt = PointEvent::PointAdded(mouse_x as f32, mouse_y as f32);
+						let listeners = listeners.lock().unwrap();
+						listeners.iter().for_each(move |f: &Box<dyn Fn(PointEvent) -> ()>|{ f(evt); });
 						true
 					},
 					Event::Drag => { true },
@@ -111,11 +118,7 @@ impl PointEditor {
 			image_source,
 			selected_point: None,
 			cached_keypoints: keypoints,
-			// Start with noops.
-			point_added_cb: &point_noop,
-			point_moved_cb: &point_noop,
-			point_selected_cb: &point_noop,
-			point_deleted_cb: &point_noop,
+			event_listeners: callbacks,
 		}
 	}
 
@@ -133,6 +136,10 @@ impl PointEditor {
 		let mut pts = self.cached_keypoints.lock().unwrap();
 		pts.clear();
 		pts.extend_from_slice(new_points.as_slice());
+	}
+
+	fn add_listener(&mut self, f: Box<dyn Fn(PointEvent) -> ()>) {
+		self.event_listeners.lock().unwrap().push(f);
 	}
 }
 
@@ -169,17 +176,20 @@ fn main() {
 		});
 	}
 	{
+		// Left callback:
 		let mut animation = animation.clone();
 		let mut left = left.clone();
 		let mut right = right.clone();
-		left.borrow_mut().point_added_cb = &|idx, x, y| {
-			// Add it to the animation and then do a callback to the right side.
-			animation.lock().unwrap().set_point(x, y, x, y, 0, None);
-			if let Ok(mut right_pts) = right.borrow_mut().cached_keypoints.get_mut() {
-				right_pts.push(x);
-				right_pts.push(y);
+		let f = Box::new(move |evt: PointEvent| {
+			match evt {
+				PointEvent::PointAdded(x, y) => {
+					println!("Hey, a callback! {}, {}", &x, &y);
+					animation.lock().unwrap().set_point(x, y, x, y, 0, None);
+				},
+				_ => println!("asdf"),
 			}
-		};
+		});
+		left.borrow_mut().add_listener(f);
 	}
 
 	// Finalize layout and show:
