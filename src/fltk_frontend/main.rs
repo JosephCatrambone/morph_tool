@@ -10,6 +10,7 @@ use fltk::{
 	prelude::*,
 	surface::ImageSurface,
 	utils,
+	valuator,
 	window::Window,
 };
 use image as imagers;
@@ -51,6 +52,7 @@ struct PointEditor {
 	cached_image: Arc<Mutex<imagefl::RgbImage>>,
 	cached_keypoints: Arc<Mutex<Vec<f32>>>,
 	selected_point: Option<usize>,
+	pub editable: bool,
 	// Shared:
 	pub image_source: Arc<Mutex<Box<dyn FrameProvider>>>,
 	// Callbacks:
@@ -116,6 +118,7 @@ impl PointEditor {
 		Self {
 			cached_image,
 			image_source,
+			editable: true,
 			selected_point: None,
 			cached_keypoints: keypoints,
 			event_listeners: callbacks,
@@ -130,6 +133,11 @@ impl PointEditor {
 		}
 		let mut img = self.cached_image.lock().unwrap();
 		*img = rs_image_to_fl_image(self.image_source.lock().unwrap().get_frame(0)).unwrap();
+	}
+	
+	fn set_image(&mut self, new_image: &imagers::DynamicImage) {
+		let mut img = self.cached_image.lock().unwrap();
+		*img = rs_image_to_fl_image(new_image).unwrap();
 	}
 
 	fn set_points(&mut self, new_points: &Vec<f32>) {
@@ -147,7 +155,7 @@ fn main() {
 	let mut animation = Arc::new(Mutex::new(Animation::new()));
 	let app = app::App::default();
 	let mut wind = Window::new(100, 100, 400, 300, "Hello from rust");
-	let mut frame = Frame::default_fill();
+	//let mut frame = Frame::default_fill();
 	let mut page = group::Flex::default_fill().column();
 
 	// Set up layout:
@@ -157,6 +165,18 @@ fn main() {
 	let mut left = Rc::from(RefCell::from(PointEditor::new()));
 	let mut right = Rc::from(RefCell::from(PointEditor::new()));
 	let mut out = Rc::from(RefCell::from(PointEditor::new()));
+	row.end();
+	
+	let row = group::Flex::default_fill().row();
+	let mut slider = valuator::Slider::default();
+	slider.set_type(valuator::SliderType::HorizontalNice);
+	slider.set_bounds(0.0, 1.0);
+	slider.set_range(0.0, 1.0);
+	slider.set_value(0.5f64);
+	slider.set_step(0.0, 1);
+	slider.set_callback(move |s| {
+		println!("Slider value: {}", s.value());
+	});
 	row.end();
 
 	let mut but = Button::new(160, 210, 80, 40, "Click me!");
@@ -175,11 +195,8 @@ fn main() {
 			right.borrow_mut().load_frame_source();
 		});
 	}
-	{
-		// Left callback:
-		let mut animation = animation.clone();
-		let mut left = left.clone();
-		let mut right = right.clone();
+	let generate_and_add_callbacks = move |origin: Rc<RefCell<PointEditor>>, dest: Rc<RefCell<PointEditor>>| {
+		let animation = animation.clone();
 		let f = Box::new(move |evt: PointEvent| {
 			match evt {
 				PointEvent::PointAdded(x, y) => {
@@ -189,8 +206,10 @@ fn main() {
 				_ => println!("asdf"),
 			}
 		});
-		left.borrow_mut().add_listener(f);
-	}
+		origin.borrow_mut().add_listener(f);
+	};
+	generate_and_add_callbacks(left.clone(), right.clone());
+	generate_and_add_callbacks(right.clone(), left.clone());
 
 	// Finalize layout and show:
 	page.fixed(&menubar, MENUBAR_HEIGHT);
