@@ -52,11 +52,20 @@ enum PointEvent {
 	PointDeleted(usize),
 }
 
+// I hate this hack so much.
+#[derive(Clone, Copy, Debug)]
+enum EditorSide {
+	Left,
+	Right,
+	Output,
+}
+
 struct PointEditor {
 	cached_image: Arc<Mutex<imagefl::RgbImage>>,
 	cached_keypoints: Arc<Mutex<Vec<f32>>>,
 	selected_point: Option<usize>,
 	pub editable: bool,
+	pub side: EditorSide,
 	// Shared:
 	pub image_source: Arc<Mutex<Box<dyn FrameProvider>>>,
 	// Callbacks:
@@ -156,6 +165,7 @@ impl PointEditor {
 							prev_mouse = Some((mouse_x, mouse_y));
 							(0, 0)
 						};
+						prev_mouse = Some((mouse_x, mouse_y));
 						match app::event_mouse_button() {
 							MouseButton::Left => {
 								if let Some(selected_idx) = selected_point {
@@ -188,6 +198,7 @@ impl PointEditor {
 			cached_image,
 			image_source,
 			editable: true,
+			side: EditorSide::Output,
 			selected_point: None,
 			cached_keypoints: keypoints,
 			event_listeners: callbacks,
@@ -246,6 +257,12 @@ fn main() {
 	let mut out = Rc::from(RefCell::from(PointEditor::new()));
 	row.end();
 	
+	{
+		// Terrible hack so we can tell if the left or the right side is sending the movement.
+		left.borrow_mut().side = EditorSide::Left;
+		right.borrow_mut().side = EditorSide::Right;
+	}
+	
 	let row = group::Flex::default_fill().row();
 	let mut slider = valuator::Slider::default();
 	slider.set_type(valuator::SliderType::HorizontalNice);
@@ -287,6 +304,7 @@ fn main() {
 		let d2 = dest.clone();
 		let animation = animation.clone();
 		let f = Box::new(move |evt: PointEvent| {
+			dbg!(&evt);
 			match evt {
 				PointEvent::PointAdded(x, y) => {
 					animation.lock().unwrap().set_point(x, y, x, y, 0, None);
@@ -298,15 +316,22 @@ fn main() {
 				PointEvent::PointSelected(idx) => {
 					o2.borrow_mut().selected_point = Some(idx);
 					d2.borrow_mut().selected_point = Some(idx);
+					app::redraw();
 				},
 				PointEvent::PointDeselected => {
 					o2.borrow_mut().selected_point = None;
 					d2.borrow_mut().selected_point = None;
+					app::redraw();
 				},
 				PointEvent::PointMoved(idx, x, y) => {
 					// TODO: Start here.
 					// Change set_point to take None.
-					//animation.lock().unwrap().
+					match o2.borrow().side {
+						EditorSide::Left => animation.lock().unwrap().update_point(Some((x, y)), None, 0, idx),
+						EditorSide::Right => animation.lock().unwrap().update_point(None, Some((x, y)), 0, idx),
+						_ => {},
+					}
+					app::redraw();
 				},
 				_ => println!("asdf"),
 			}

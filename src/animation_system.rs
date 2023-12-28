@@ -109,6 +109,15 @@ impl Animation {
 			return self.set_point(left_x, left_y, right_x, right_y, frame, Some(new_channel_idx));
 		}
 	}
+	
+	pub fn update_point(&mut self, left: Option<(f32, f32)>, right: Option<(f32, f32)>, frame: u32, channel: usize) {
+		if let Some((x, y)) = left {
+			self.channels[channel][frame as usize].left = Point(x, y);
+		}
+		if let Some((x, y)) = right {
+			self.channels[channel][frame as usize].right = Point(x, y);
+		}
+	}
 
 	/// Remove the given channel keypoint.
 	/// If frame is None, will remove all keypoints from the channel and delete the channel.
